@@ -36,7 +36,7 @@ func InitProxyTestZk(t *testing.T) *metastore.ZookeeperStore {
 	ans = zkStore.RecursiveCreate(context.Background(), proxyWatchTestZkPrefix)
 	assert.Assert(t, ans)
 	for i, namespace := range namespaces {
-		leaderPath := proxyWatchTestZkPrefix + "/" + namespace + "/LOCK/_c_3fc5d5ad834d3838ff631e09dc007141-lock-000000000"
+		leaderPath := proxyWatchTestZkPrefix + "/" + namespace + "/LOCK/_c_xxxxxxxxxxxx-lock-000000000"
 		ans = zkStore.RecursiveCreate(
 			context.Background(),
 			leaderPath,
@@ -168,8 +168,8 @@ func TestWatchLeader(t *testing.T) {
 	watcher := NewWatcher(m)
 	watcher.Start()
 
-	rodisLeaderPath := proxyWatchTestZkPrefix + "/test_rodis/LOCK/_c_3fc5d5ad834d3838ff631e09dc007141-lock-000000000"
-	rodisLeaderPath1 := proxyWatchTestZkPrefix + "/test_rodis/LOCK/_c_3fc5d5ad834d3838ff631e09dc007141-lock-000000001"
+	rodisLeaderPath := proxyWatchTestZkPrefix + "/test_rodis/LOCK/_c_xxxxxxxxxxxx-lock-000000000"
+	rodisLeaderPath1 := proxyWatchTestZkPrefix + "/test_rodis/LOCK/_c_xxxxxxxxxxxx-lock-000000001"
 	ans := zkStore.RecursiveCreate(
 		context.Background(),
 		rodisLeaderPath1,
