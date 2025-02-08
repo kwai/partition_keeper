@@ -1,0 +1,39 @@
+syntax = "proto3";
+
+package colossusdb;
+option go_package = "github.com/kuaishou/colossusdb/pb;pb";
+
+import "google/api/annotations.proto";
+import "teams/reco-arch/colossusdb/proto/common.proto";
+
+message TablesManagerError {
+  enum Code {
+    kOk = 0;
+    kNotLeader = 1;
+  }
+}
+
+message GetNextIdRequest {}
+message GetNextIdResponse {
+  ErrorStatus status = 1;
+  int32 id = 2;
+}
+
+message AllocateIdRequest {}
+message AllocateIdResponse {
+  ErrorStatus status = 1;
+  int32 id = 2;
+}
+
+service TablesManager {
+  rpc GetNextId(GetNextIdRequest) returns (GetNextIdResponse) {
+    option (google.api.http) = {
+      get : "/v1/get_next_id"
+    };
+  }
+  rpc AllocateId(AllocateIdRequest) returns (AllocateIdResponse) {
+    option (google.api.http) = {
+      post : "/v1/allocate_id"
+    };
+  }
+}

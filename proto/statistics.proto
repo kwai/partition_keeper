@@ -1,0 +1,41 @@
+syntax = "proto3";
+
+package colossusdb;
+option go_package = "github.com/kuaishou/colossusdb/pb;pb";
+
+enum EmbdServerStat {
+  // statistics keys for partition db factory
+  instance_storage_limit_bytes = 0;
+};
+
+enum EmbdReplicaStat {
+  // statistics keys for partition db
+  db_storage_limit_bytes = 0;
+}
+
+enum RodisServerStat {
+  // size of a rodis db
+  dbcap_bytes = 0;
+  dbcpu_cores = 1; // db cpu cores
+}
+
+enum RodisReplicaStat {
+  // sequence number of a partition replica, which is useful for WAL-based db
+  // like rodis. the associated value should be a int64
+  seq = 0;
+}
+
+enum StdStat {
+  // float, 100 * cpu_cores
+  cpu_percent = 0;
+  memcap_bytes = 1;
+  diskcap_bytes = 2;
+  diskband_bytes = 3;
+  netband_bytes = 4;
+}
+
+enum StdReplicaStat {
+  unavailable = 0;
+  stream_load_offset = 1;
+  stream_load_paused = 2;
+}

@@ -1,0 +1,4 @@
+43c43
+< option go_package = "descriptor";
+---
+> option go_package = "google/protobuf/descriptor;descriptor";

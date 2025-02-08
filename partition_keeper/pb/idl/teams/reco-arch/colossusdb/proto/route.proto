@@ -1,0 +1,56 @@
+syntax = "proto3";
+
+package colossusdb;
+option go_package = "github.com/kuaishou/colossusdb/pb;pb";
+option java_package = "com.kuaishou.reco.colossusdb";
+option java_multiple_files = true;
+
+import "teams/reco-arch/colossusdb/proto/common.proto";
+import "teams/reco-arch/colossusdb/proto/replica_location.proto";
+
+message PartitionLocation {
+  repeated ReplicaLocation replicas = 1;
+  int64 version = 2;
+  int32 split_version = 3;
+}
+
+message ServerLocation {
+  string host = 1;
+  int32 port = 2;
+  // hub_id refers to one entry in RouteEntries.replica_hubs
+  int32 hub_id = 3;
+  map<string, string> info = 4;
+  string ip = 5;
+  bool alive = 6;
+  AdminNodeOp op = 7;
+}
+
+message TableInfo {
+  string hash_method = 1;
+  int32 split_version = 2;
+  bool use_paz = 3;
+}
+
+enum RouteFormat {
+  JSON = 0;
+  GZIPPED_PB = 1;
+}
+
+message EntriesBrief {
+  int32 partition_count = 1;
+}
+
+message RouteMeta {
+  RouteFormat format = 1;
+  string route_id = 2;
+  int32 segment_count = 3;
+  int32 segment_id = 4;
+  EntriesBrief brief = 5;
+}
+
+message RouteEntries {
+  TableInfo table_info = 1;
+  repeated PartitionLocation partitions = 2;
+  repeated ServerLocation servers = 3;
+  repeated ReplicaHub replica_hubs = 4;
+}

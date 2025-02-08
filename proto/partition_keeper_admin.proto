@@ -1,0 +1,688 @@
+syntax = "proto3";
+
+package colossusdb;
+option go_package = "github.com/kuaishou/colossusdb/pb;pb";
+
+import "teams/reco-arch/colossusdb/proto/common.proto";
+import "teams/reco-arch/colossusdb/proto/partition_service.proto";
+
+message AdminError {
+  enum Code {
+    kOk = 0;
+    kWorkingInprogress = 1;
+    kServiceExists = 2;
+    kServiceNotExists = 3;
+    kServiceNotInServingState = 4;
+    kTableExists = 5;
+    kTableNotExists = 6;
+    kAccessZkError = 7;
+    kNotImplemented = 8;
+    kNodeNotExisting = 9;
+    kInvalidParameter = 10;
+    kServerNotLeader = 11;
+    kNotEnoughResource = 12;
+    kDuplicateRequest = 13;
+    kTaskNotExists = 14;
+    kTableNotEmpty = 15;
+    kTaskExists = 16;
+    kUnsupportedTaskName = 17;
+    kDependencyServiceError = 18;
+    kOccupiedTableInTrafficManager = 19;
+    kEmptyHttpBody = 1001;
+    kHttpDecodeFailed = 1002;
+    kHttpPostFailed = 1003;
+  }
+}
+
+enum ServiceType {
+  invalid = 0;
+  colossusdb_embedding_server = 1;
+  colossusdb_rodis = 2;
+  colossusdb_feart_server = 3;
+  colossusdb_dummy = 4;
+  colossusdb_feature_server = 5;
+  colossusdb_partition_server = 6;
+  colossusdb_sim_cache_server = 7;
+  colossusdb_kgnn = 8;
+  colossusdb_sim_server = 9;
+  colossusdb_clotho = 10;
+}
+
+enum NodeFailureDomainType {
+  HOST = 0;
+  PROCESS = 1;
+  RACK = 2;
+}
+
+message ListServicesRequest {}
+
+message ListServicesResponse {
+  ErrorStatus status = 1;
+  repeated string service_names = 2;
+}
+
+message NodeHints {
+  string hub = 1;
+};
+
+message ScheduleOptions {
+  bool enable_primary_scheduler = 1;
+  // a number between [1, 1000],
+  // which means max_sched_ratio/1000 partitions will be scheduled at most
+  int32 max_sched_ratio = 2;
+  // algorithm used to score a node
+  string estimator = 3;
+  // request to rescore of all nodes currently in this service(offline nodes excepted)
+  // before a new round of scheduler is running,
+  // which implies that failure of a node's scoring will block the scheduler.
+  //
+  // cases that a node's score may fail:
+  //   1. a newly registered node, which haven't reported its server info yet.
+  //   2. a dead node, which can't report its server info
+  //   3. an stated node, which don't report proper server info to related estimator
+  //   4. a buggy node, which fail to report the valid server info
+  //
+  // if an estimator is changed,  the flag will be set automatically by the system.
+  // which means that there's no need for an admin to set this flag manually in most cases.
+  bool force_rescore_nodes = 4;
+  // whether to do partition balancing during splitting
+  bool enable_split_balancer = 5;
+  // whether to add replica first in hash group arranger
+  bool hash_arranger_add_replica_first = 6;
+  // if add replica first in hash arranger, the actual replica count may exceed the
+  // the estimated threshold during scheduling. the following option
+  // specifies the max value which exceed the threshold.
+  int32 hash_arranger_max_overflow_replicas = 7;
+  // if a partition has learner(s), we call it learning partition.
+  // we try to limit learning parts of nodes as a learning partition may
+  // consume lots network (in/out) bandwith, no matter this node is learning
+  // from others or learned by others
+  //
+  // a default value of 0 means no limitation, a negative value means limited all
+  int32 max_learning_parts_per_node = 8;
+}
+
+message CreateServiceRequest {
+  string service_name = 1;
+  // name should be unique for different hubs
+  repeated ReplicaHub nodes_hubs = 2;
+  ServiceType service_type = 3;
+  NodeFailureDomainType failure_domain_type = 4;
+  bool static_indexed = 5;
+  bool use_paz = 6;
+  string service_ksn = 7;
+}
+
+message DeleteServiceRequest {
+  string service_name = 1;
+}
+
+message QueryServiceRequest {
+  string service_name = 1;
+}
+
+message QueryServiceResponse {
+  ErrorStatus status = 1;
+  repeated ReplicaHub nodes_hubs = 2;
+  bool schedule_enabled = 3;
+  ServiceType service_type = 4;
+  bool kess_poller_enabled = 5;
+  NodeFailureDomainType failure_domain_type = 6;
+  bool static_indexed = 7;
+  ScheduleOptions sched_opts = 8;
+  bool use_paz = 9;
+  string service_ksn = 10;
+}
+
+message AddHubsRequest {
+  string service_name = 1;
+  repeated ReplicaHub nodes_hubs = 2;
+  // if true, added hubs will try to gather nodes from other hubs of same az
+  bool try_gather = 3;
+}
+
+message RemoveHubsRequest {
+  string service_name = 1;
+  repeated ReplicaHub nodes_hubs = 2;
+  // if true, removed hubs will try to remove nodes to other hubs of same az
+  bool try_scatter = 3;
+}
+
+message UpdateHubsRequest {
+  string service_name = 1;
+  // currently only `disallowed_roles` fields are allow to be update
+  repeated ReplicaHub nodes_hubs = 2;
+}
+
+message GiveHintsRequest {
+  string service_name = 1;
+  // <host:port>|host -> NodeHint
+  // if hint_key(host or host:port) not exists, will create a new one
+  // if hint_key(host or host:port) exists, will update hint
+  //
+  // hints are ONESHOT, which means that
+  // the hint will be cleaned once it's evaluated,
+  // no matter it's adopted or not
+  map<string, NodeHints> hints = 2;
+  // if match_port is false, hint key with format host:port will stripped to host
+  bool match_port = 3;
+}
+
+message RecallHintsRequest {
+  string service_name = 1;
+  repeated RpcNode nodes = 2;
+  // if match_port is true, then will remove hints of node_name:port
+  // if match_port is false, then will remove hints of node_name
+  bool match_port = 3;
+}
+
+message UpdateScheduleOptionsRequest {
+  string service_name = 1;
+  ScheduleOptions sched_opts = 2;
+  repeated string updated_option_names = 3;
+}
+
+enum TaskNotifyMode {
+  NOTIFY_LEADER = 0;
+  NOTIFY_ANY = 1;
+  NOTIFY_ALL = 2;
+  NOTIFY_EVERY_REGION = 3;
+}
+
+message PeriodicTask {
+  string task_name = 1;
+  int64 first_trigger_unix_seconds = 2;
+  int64 period_seconds = 3;
+  int32 max_concurrency_per_node = 4;
+  TaskNotifyMode notify_mode = 5;
+  map<string, string> args = 6;
+  int32 keep_nums = 7;
+  bool paused = 8;
+  int32 max_concurrent_nodes = 9;
+  // please pay attention to the flags "paused" and "freezed".
+  // "paused" is a soft status set by user, which can be reset by UpdateTask rpc.
+  // "freezed" is a hard status set by partition-keeper, which means the
+  // system MUST STOP the task execution for the sake of correct program logic, and
+  // the status CAN ONLY be reset by the system itself.
+  bool freezed = 10;
+  int32 max_concurrent_hubs = 11;
+}
+
+message Table {
+  int32 table_id = 1;
+  string table_name = 2;
+  string hash_method = 3;
+  int32 parts_count = 4;
+
+  // stable configs for table
+  string json_args = 5;
+  string belong_to_service = 6;
+
+  // dynamic configs for table
+  string kconf_path = 7;
+
+  bool recover_partitions_from_route = 8;
+  // a number between [0,100],
+  // specify the percentage of nodes that will receive the table schedule
+  // commands. this parameter only works in UpdateTableRequest. for
+  // CreateTableRequest, despite other values may given, the schedule_grayscale
+  // will reset to 100 if the table doesn't do recovery and 0 if it does.
+  int32 schedule_grayscale = 9;
+  int64 restore_version = 10;
+  int32 split_version = 11;
+  string base_table = 12;
+}
+
+message CreateTableRequest {
+  string service_name = 1;
+  // you can just keep table_id empty when create table
+  Table table = 2;
+  string restore_path = 3;
+  string traffic_kconf_path = 4;
+}
+
+message DeleteTableRequest {
+  string service_name = 1;
+  string table_name = 2;
+  bool clean_task_side_effect = 3;
+  int32 clean_delay_minutes = 4;
+}
+
+message RestoreOpts {
+  int32 max_concurrent_nodes_per_hub = 1;
+  int32 max_concurrent_parts_per_node = 2;
+}
+
+message RestoreTableRequest {
+  string service_name = 1;
+  string table_name = 2;
+  string restore_path = 3;
+  RestoreOpts opts = 4;
+}
+
+message ListTablesRequest {
+  string service_name = 1;
+}
+
+message ListTablesResponse {
+  ErrorStatus status = 1;
+  repeated Table tables = 2;
+}
+
+message QueryTableRequest {
+  string service_name = 1;
+  string table_name = 2;
+  bool with_tasks = 3;
+  bool with_partitions = 4;
+}
+
+message QueryTableResponse {
+  ErrorStatus status = 1;
+  Table table = 2;
+  repeated PeriodicTask tasks = 4;
+  repeated PartitionPeerInfo partitions = 5;
+}
+
+message QueryPartitionRequest {
+  string service_name = 1;
+  string table_name = 2;
+  int32 from_partition = 3;
+  int32 to_partition = 4;
+}
+
+message QueryPartitionResponse {
+  ErrorStatus status = 1;
+  int32 table_parts_count = 2;
+  repeated PartitionPeerInfo partitions = 3;
+}
+
+message UpdateTableRequest {
+  string service_name = 1;
+  // currently only schedule_grayscale supports update
+  Table table = 2;
+}
+
+message UpdateTableJsonArgsRequest {
+  string service_name = 1;
+  string table_name = 2;
+  string json_args = 3;
+}
+
+message SplitTableOptions {
+  int32 max_concurrent_parts = 1;
+  int32 delay_seconds = 2;
+}
+
+message SplitTableRequest {
+  string service_name = 1;
+  string table_name = 2;
+  int32 new_split_version = 3;
+  SplitTableOptions options = 4;
+}
+
+message TaskExecInfo {
+  enum FinishStatus {
+    kFinished = 0;
+    kCancelled = 1;
+  }
+  int64 start_second = 1;
+  int64 finish_second = 2;
+  int64 session_id = 3;
+  map<string, string> args = 4;
+  FinishStatus finish_status = 5;
+}
+
+message OperateTaskRequest {
+  string service_name = 1;
+  string table_name = 2;
+  PeriodicTask task = 3;
+}
+
+message DeleteTaskRequest {
+  string service_name = 1;
+  string table_name = 2;
+  string task_name = 3;
+  bool clean_task_side_effect = 4;
+  int32 clean_delay_minutes = 5;
+}
+
+message QueryTaskRequest {
+  string service_name = 1;
+  string table_name = 2;
+  string task_name = 3;
+}
+
+message QueryTaskResponse {
+  ErrorStatus status = 1;
+  PeriodicTask task = 2;
+  repeated TaskExecInfo infos = 3;
+}
+
+message TriggerDeleteTaskSideEffectRequest {
+  string service_name = 1;
+  string table_name = 2;
+  string task_name = 3;
+}
+
+message TaskReplicaExecution {
+  string node = 1;
+  int32 progress = 2;
+}
+
+message TaskPartExecution {
+  int32 partition_id = 1;
+  repeated TaskReplicaExecution replica_executions = 2;
+  bool finish = 3;
+}
+
+message QueryTaskCurrentExecutionRequest {
+  string service_name = 1;
+  string table_name = 2;
+  string task_name = 3;
+}
+
+message QueryTaskCurrentExecutionResponse {
+  ErrorStatus status = 1;
+  repeated TaskPartExecution executions = 2;
+}
+
+message AdminNodeRequest {
+  string service_name = 1;
+  repeated RpcNode nodes = 2;
+  AdminNodeOp op = 3;
+  bool match_port = 4;
+}
+
+message AdminNodeResponse {
+  ErrorStatus status = 1;
+  repeated ErrorStatus node_results = 2;
+}
+
+message UpdateNodeWeightRequest {
+  string service_name = 1;
+  repeated RpcNode nodes = 2;
+  repeated float weights = 3;
+}
+
+message UpdateNodeWeightResponse {
+  ErrorStatus status = 1;
+  repeated ErrorStatus node_results = 2;
+}
+
+message ShrinkAzRequest {
+  string service_name = 1;
+  string az = 2;
+  // should be within (0, nodes_count(az))
+  // error will be returned if new_size no larger than 0.
+  // nothing will happen if new_size is no smaller than nodes_count(az)
+  int32 new_size = 3;
+}
+
+message ShrinkAzResponse {
+  ErrorStatus status = 1;
+  repeated RpcNode shrinked = 2;
+}
+
+message ListNodesRequest {
+  string service_name = 1;
+  // if az is not empty, then the hub_name field is ignored, and
+  // the nodes belong to the given az will be returned
+  string az = 3;
+  // if hub_name is "", then all nodes will be returned,
+  // otherwise only nodes on this hub will be returned
+  string hub_name = 2;
+  // if table_name is not empty, then NodeBrief in ListNodesResponse will
+  // only take replicas for this given table into account.
+  string table_name = 4;
+}
+
+message NodeBrief {
+  RpcNode node = 1;
+  AdminNodeOp op = 2;
+  bool is_alive = 3;
+  int32 primary_count = 4;
+  int32 secondary_count = 5;
+  int32 learner_count = 6;
+  string hub_name = 7;
+  int32 estimated_count = 8;
+  string node_uniq_id = 9;
+  string node_index = 10;
+  float weight = 11;
+  int32 score = 12;
+};
+
+message ListNodesResponse {
+  ErrorStatus status = 1;
+  repeated NodeBrief nodes = 2;
+}
+
+message QueryNodeInfoRequest {
+  string service_name = 1;
+  string node_name = 2;
+  int32 port = 3;
+  // if table_name is not empty, then NodeBrief & ReplicaInfo in
+  // QueryNodeInfoResponse will only take replicas for this given table into
+  // account.
+  string table_name = 4;
+  bool only_brief = 5;
+  // currently port may not correct if requests is from krp,
+  // so here we'd better have ability to skip port
+  //
+  // if this flag is false and we can't get exactly the same "node_name:port" pair, this query
+  // will randomly return a node with the same node_name
+  bool match_port = 6;
+}
+
+message ReplicaInfo {
+  string table_name = 1;
+  int32 partition_id = 2;
+  ReplicaRole role = 3;
+}
+
+message QueryNodeInfoResponse {
+  ErrorStatus status = 1;
+  NodeBrief brief = 2;
+  repeated ReplicaInfo replicas = 3;
+  map<string, int64> resource = 4;
+}
+
+message QueryNodesInfoRequest {
+  string service_name = 1;
+  repeated RpcNode nodes = 2;
+  // if table_name is not empty, then NodeBrief & ReplicaInfo in
+  // QueryNodesInfoResponse will only take replicas for this given table into
+  // account.
+  string table_name = 3;
+  bool only_brief = 4;
+  // currently port may not correct if requests is from krp,
+  // so here we'd better have ability to skip port
+  //
+  // if this flag is false and we can't get exactly the same rpc_node, this query
+  // will return randomly return a node which match the rpc_node.node_name
+  bool match_port = 6;
+}
+
+message QueryNodesInfoResponse {
+  ErrorStatus status = 1;
+  repeated QueryNodeInfoResponse nodes = 2;
+}
+
+message SwitchSchedulerStatusRequest {
+  string service_name = 1;
+  bool enable = 2;
+}
+
+message SwitchKessPollerStatusRequest {
+  string service_name = 1;
+  bool enable = 2;
+}
+
+message ManualRemoveReplicasRequest {
+  message ReplicaItem {
+    int32 partition_id = 1;
+    // you can specify either ip:port or node_uniq_id when you want to remove
+    // replica. if both specified, node_uniq_id is prefered.
+    RpcNode node = 2;
+    string node_uniq_id = 3;
+  };
+  string service_name = 1;
+  string table_name = 2;
+  repeated ReplicaItem replicas = 3;
+}
+
+message ManualRemoveReplicasResponse {
+  ErrorStatus status = 1;
+  repeated ErrorStatus replicas_result = 2;
+}
+
+message ExpandAzsRequest {
+  message AzOption {
+    string az = 1;
+    int32 new_size = 2;
+  }
+  string service_name = 1;
+  repeated AzOption az_options = 2;
+}
+
+message CancelExpandAzsRequest {
+  string service_name = 1;
+  repeated string azs = 2;
+}
+
+message ReplaceNodesRequest {
+  string service_name = 1;
+  repeated RpcNode src_nodes = 2;
+  repeated RpcNode dst_nodes = 3;
+}
+
+message AssignHubRequest {
+  string service_name = 1;
+  RpcNode node = 2;
+  string hub = 3;
+}
+
+message RemoveWatcherRequest {
+  string service_name = 1;
+  string watcher_name = 2;
+}
+// the following interfaces are provided by http interface
+// request method may be GET/POST, data are passed & returned by json
+// then json value are exactly described by the protobuf message
+//
+// for example: CreateService
+//
+//  POST http://<partkeeper-server>/v1/create_service
+//    http_header:
+//      {
+//        "token": "xxxxx",
+//      }
+//    http_body:
+//      {
+//        "service_name": "hello",
+//        "node_hubs": [
+//           {
+//             "name": "hub1",
+//             "az": "yz"
+//           }
+//         ]
+//      }
+//    http_response:
+//      "status": {
+//        {
+//          "code": 0,
+//          "message": ""
+//        }
+//      }
+//
+// in GET request, all fields are encoded in url, so we ensure there aren't
+// nested rpc message, for example:
+//  GET http://<partkeeper-server>/v1/query_node_info?url=xxxxx&port=xxxxx
+service PartitionKeeperAdmin {
+  // service operations
+  // GET
+  rpc ListServices(ListServicesRequest) returns (ListServicesResponse);
+  // POST
+  rpc CreateService(CreateServiceRequest) returns (ErrorStatusResponse);
+  // POST
+  rpc DeleteService(DeleteServiceRequest) returns (ErrorStatusResponse);
+  // POST
+  rpc AddHubs(AddHubsRequest) returns (ErrorStatusResponse);
+  // POST
+  rpc RemoveHubs(RemoveHubsRequest) returns (ErrorStatusResponse);
+  // POST
+  rpc UpdateHubs(UpdateHubsRequest) returns (ErrorStatusResponse);
+  // POST: enable or disable service scheduler
+  rpc SwitchSchedulerStatus(SwitchSchedulerStatusRequest) returns (ErrorStatusResponse);
+  // POST: enable or disable service kess poller
+  rpc SwitchKessPollerStatus(SwitchKessPollerStatusRequest) returns (ErrorStatusResponse);
+  // POST
+  rpc UpdateScheduleOptions(UpdateScheduleOptionsRequest) returns (ErrorStatusResponse);
+  // GET
+  rpc QueryService(QueryServiceRequest) returns (QueryServiceResponse);
+  // POST
+  rpc GiveHints(GiveHintsRequest) returns (ErrorStatusResponse);
+  // POST
+  rpc RecallHints(RecallHintsRequest) returns (ErrorStatusResponse);
+
+  // table operation
+  // POST
+  rpc CreateTable(CreateTableRequest) returns (ErrorStatusResponse);
+  // POST
+  rpc DeleteTable(DeleteTableRequest) returns (ErrorStatusResponse);
+  // POST
+  rpc UpdateTable(UpdateTableRequest) returns (ErrorStatusResponse);
+  // POST
+  rpc UpdateTableJsonArgs(UpdateTableJsonArgsRequest) returns (ErrorStatusResponse);
+  // GET
+  rpc ListTables(ListTablesRequest) returns (ListTablesResponse);
+  // GET
+  rpc QueryTable(QueryTableRequest) returns (QueryTableResponse);
+  // POST
+  rpc RemoveReplicas(ManualRemoveReplicasRequest) returns (ManualRemoveReplicasResponse);
+  // POST
+  rpc RestoreTable(RestoreTableRequest) returns (ErrorStatusResponse);
+  // POST
+  rpc SplitTable(SplitTableRequest) returns (ErrorStatusResponse);
+
+  // table partition operation
+  // GET
+  rpc QueryPartition(QueryPartitionRequest) returns (QueryPartitionResponse);
+
+  // table task operation
+  // POST
+  rpc CreateTask(OperateTaskRequest) returns (ErrorStatusResponse);
+  // POST
+  rpc UpdateTask(OperateTaskRequest) returns (ErrorStatusResponse);
+  // POST
+  rpc DeleteTask(DeleteTaskRequest) returns (ErrorStatusResponse);
+  // GET
+  rpc QueryTask(QueryTaskRequest) returns (QueryTaskResponse);
+  // POST
+  rpc TriggerDeleteTaskSideEffect(TriggerDeleteTaskSideEffectRequest) returns (ErrorStatusResponse);
+  // GET
+  rpc QueryTaskCurrentExecution(QueryTaskCurrentExecutionRequest) returns (QueryTaskCurrentExecutionResponse);
+
+  // node operation
+  // POST
+  rpc AdminNode(AdminNodeRequest) returns (AdminNodeResponse);
+  // POST
+  rpc UpdateNodeWeight(UpdateNodeWeightRequest) returns (UpdateNodeWeightResponse);
+  // POST
+  rpc ShrinkAz(ShrinkAzRequest) returns (ShrinkAzResponse);
+  // POST
+  rpc ExpandAzs(ExpandAzsRequest) returns (ErrorStatusResponse);
+  // POST
+  rpc CancelExpandAzs(CancelExpandAzsRequest) returns (ErrorStatusResponse);
+  // POST
+  rpc AssignHub(AssignHubRequest) returns (ErrorStatusResponse);
+  // POST
+  rpc ReplaceNodes(ReplaceNodesRequest) returns (ErrorStatusResponse);
+  // GET
+  rpc ListNodes(ListNodesRequest) returns (ListNodesResponse);
+  // GET
+  rpc QueryNodeInfo(QueryNodeInfoRequest) returns (QueryNodeInfoResponse);
+  // POST
+  rpc QueryNodesInfo(QueryNodesInfoRequest) returns (QueryNodesInfoResponse);
+  // POST
+  rpc RemoveWatcher(RemoveWatcherRequest) returns (ErrorStatusResponse);
+}

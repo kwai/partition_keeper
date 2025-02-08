@@ -1,0 +1,74 @@
+#!/bin/sh
+
+cd `dirname $0` || exit
+absolute_path=`readlink -f .`
+service_dir=`dirname $absolute_path`
+service_name=`basename $service_dir`
+exe_absolute_path="$absolute_path/$service_name"
+
+if [ -f $absolute_path/export_classpath.sh ]; then
+  source $absolute_path/export_classpath.sh
+fi
+
+if [ -f $absolute_path/model_sync.sh ]; then
+  source $absolute_path/model_sync.sh
+fi
+
+if [ -f $absolute_path/customized_config.sh ]; then
+    source $absolute_path/customized_config.sh
+fi
+
+if [ -f $service_dir/ksp-export.sh ]; then
+  source "$service_dir/ksp-export.sh"
+fi
+
+if [ -f /etc/profile.d/kws_env.sh ]; then
+  source /etc/profile.d/kws_env.sh
+fi
+
+if [[ "${KWS_SERVICE_CATALOG}" =~ ^ad.engine ]]; then 
+  if [ -f ${service_dir}/config/dynamic_json_config.py ]; then
+    python ${service_dir}/config/dynamic_json_config.py > ${service_dir}/config/dynamic_json_config.json
+  fi
+  
+  if [[ "${KWS_SERVICE_NAME}" =~ -auto-pub$ ]]; then
+    KWS_SERVICE_NAME=${KWS_SERVICE_NAME%%-auto-pub}
+  fi
+fi
+
+KS_ACCL_LIBS_DIR=${service_dir}/acceleration_libs
+if [ -f ${KS_ACCL_LIBS_DIR}/apply.sh ]; then
+    source ${KS_ACCL_LIBS_DIR}/apply.sh
+fi
+
+log_dir=../log
+
+if [ $service_name == "partition_keeper_proxy" ]; then
+    if [ -z "$PROXY_HTTP_PORT" ]; then
+        flags="-proxy_http_port $AUTO_PORT0 -proxy_zk_hosts=${PROXY_ZK_HOSTS} -log_dir=${log_dir}"
+    else
+        log_dir=../log
+        flags="-proxy_http_port=${PROXY_HTTP_PORT} -proxy_zk_hosts=${PROXY_ZK_HOSTS} -log_dir=${log_dir}"
+    fi
+elif [ $service_name == "partition_keeper" ]; then
+    flags="-http_port $AUTO_PORT0 -zk_hosts=${ZK_HOSTS} \
+        -log_dir=${log_dir} \
+        -allow_service_types ${ALLOW_SERVICE_TYPES} \
+        -namespace ${NAMESPACE} \
+        -global_manager_service_name ${GLOBAL_MANAGER_SERVICE_NAME} \
+        -service_name ${SERVICE_NAME}"
+else
+    flags="-http_port $AUTO_PORT0 -grpc_port $AUTO_PORT1 -log_dir=${log_dir}"
+fi
+
+if [ -f /home/ksp/infra-kess-agent/bin/gaea_agent_startup.sh ]; then
+  # gaea init
+  exec /home/ksp/infra-kess-agent/bin/gaea_agent_startup.sh -s "LD_LIBRARY_PATH=$service_dir/lib/mkl:/home/web_server/mkl_lib/:/home/web_server/diag_libs/:/home/deploy/mkl_lib:/usr/local/cuda-9.0/lib64/:$LD_LIBRARY_PATH exec $exe_absolute_path \
+    $OPTS $flags >> ../log/stdout.log_`date +"%Y%m%d"` 2>&1" -w $service_dir 2>&1
+elif [ -f /opt/data/kess/gaea/agent/latest/gaea_agent_startup.sh ]; then
+  exec /opt/data/kess/gaea/agent/latest/gaea_agent_startup.sh -s "LD_LIBRARY_PATH=$service_dir/lib/mkl:/home/web_server/mkl_lib/:/home/web_server/diag_libs/:/home/deploy/mkl_lib:/usr/local/cuda-9.0/lib64/:$LD_LIBRARY_PATH exec $exe_absolute_path \
+    $OPTS $flags >> ../log/stdout.log_`date +"%Y%m%d"` 2>&1" -w $service_dir 2>&1
+else
+  LD_LIBRARY_PATH=$service_dir/lib/mkl:/home/web_server/mkl_lib/:/home/web_server/diag_libs/:/home/deploy/mkl_lib:/usr/local/cuda-9.0/lib64/:/usr/local/cuda-10.1/targets/x86_64-linux/lib/:$LD_LIBRARY_PATH $exe_absolute_path \
+  $OPTS $flags >> ../log/stdout.log_`date +"%Y%m%d"` 2>&1
+fi

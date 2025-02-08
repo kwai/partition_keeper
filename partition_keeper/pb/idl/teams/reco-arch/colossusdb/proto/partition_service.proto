@@ -1,0 +1,195 @@
+syntax = "proto3";
+
+package colossusdb;
+option go_package = "github.com/kuaishou/colossusdb/pb;pb";
+
+import "teams/reco-arch/colossusdb/proto/common.proto";
+
+message PartitionError {
+  enum Code {
+    kOK = 0;
+    // TODO: mark error code to a uniq range
+    kReplicaExists = 1;
+    kReplicaNotExists = 2;
+    kUnknown = 3;
+    kResourceExhausted = 4;
+    kFailedPrecondition = 5;
+    kInvalidArgument = 6;
+  }
+}
+
+message RpcNode {
+  // may be ip or hostname
+  string node_name = 1;
+  int32 port = 2;
+}
+
+message PartitionReplica {
+  ReplicaRole role = 1;
+  RpcNode node = 2;
+  map<string, string> statistics_info = 3;
+  bool ready_to_promote = 4;
+  string hub_name = 5;
+  string node_unique_id = 6;
+  int64 restore_version = 7;
+  // only used for report,
+  // replica report its split cleanup progress to partition keeper
+  int32 split_cleanup_version = 8;
+}
+
+message PartitionPeerInfo {
+  int64 membership_version = 1;
+  repeated PartitionReplica peers = 2;
+  // when do reconfiguration,
+  // partition keeper will send partition new split version to every replica.
+  //
+  // when do report, every replica will report its newest split version
+  int32 split_version = 3;
+}
+
+message DynamicTableInfo {
+  int32 partition_num = 1;
+  int32 table_split_version = 2;
+}
+
+message PartitionInfo {
+  int32 partition_id = 1;
+  int32 table_id = 2;
+  string table_name = 3;
+  string service_type = 5;
+  int32 partition_num = 6;
+  // stable configs for table
+  string table_json_args = 4;
+  // dynamic configs for table
+  string table_kconf_path = 7;
+  int32 table_split_version = 8;
+}
+
+// ======= add replica ==========
+message AddReplicaRequest {
+  PartitionInfo part = 1;
+  PartitionPeerInfo peer_info = 2;
+  // this field give the max replicas assigned to this rpc node for this table
+  int32 estimated_replicas = 3;
+  // this value is true if the adding replica request is sent in restoring, otherwise false
+  bool for_restore = 4;
+  string auth_key = 5;
+  PartitionPeerInfo parent_info = 6;
+}
+
+// ===== replica reconfigure ========
+message ReconfigPartitionRequest {
+  int32 partition_id = 1;
+  int32 table_id = 2;
+  PartitionPeerInfo peer_info = 3;
+  string auth_key = 4;
+  PartitionPeerInfo parent_info = 5;
+  DynamicTableInfo table_info = 6;
+}
+
+// ====== remove replica ===========
+message RemoveReplicaRequest {
+  int32 partition_id = 1;
+  int32 table_id = 2;
+  PartitionPeerInfo peer_info = 3;
+  // this field give the max replicas assigned to this rpc node for this table
+  int32 estimated_replicas = 4;
+  string auth_key = 5;
+}
+
+// ======= collect ============
+message ReplicaReportInfo {
+  int32 partition_id = 1;
+  int32 table_id = 2;
+  PartitionPeerInfo peer_info = 3;
+}
+
+message GetReplicasRequest {
+  // may specified which replica to collect
+  // if empty then collect all replicas
+  repeated ReplicaReportInfo infos = 1;
+  // if this request isn't sent from partition_keeper, then skip estimated_replicas field
+  bool from_partition_keeper = 2;
+  // table_id -> estimated_replicas
+  map<int32, int32> estimated_replicas = 3;
+  string auth_key = 4;
+}
+
+message ServerInfo {
+  string service_name = 1;
+  string node_id = 2;
+  RpcNode node = 3;
+  string belong_to_hub = 4;
+  map<string, string> statistics_info = 5;
+}
+
+message GetReplicasResponse {
+  ErrorStatus server_result = 4;
+  ServerInfo server_info = 1;
+  repeated ErrorStatus results = 2;
+  repeated ReplicaReportInfo infos = 3;
+}
+
+// ========= custom command ==============
+message CustomCommandRequest {
+  int32 partition_id = 1;
+  int32 table_id = 2;
+  int64 command_session_id = 3;
+  int64 command_issue_timestamp = 4;
+  string command_name = 5;
+  map<string, string> args = 6;
+  string auth_key = 7;
+}
+
+message CustomCommandResponse {
+  ErrorStatus status = 1;
+  int32 progress = 2;
+}
+
+// ========= change authentication ==============
+message ChangeAuthenticationRequest {
+  string auth_key = 1;
+}
+
+// ========= split ==============
+message ReplicaSplitRequest {
+  int32 table_id = 1;
+  int32 partition_id = 2;
+  DynamicTableInfo new_table_info = 3;
+  PartitionPeerInfo peers = 4;
+  PartitionPeerInfo child_peers = 5;
+}
+
+// ========= split clean up ===============
+message ReplicaSplitCleanupRequest {
+  int32 table_id = 1;
+  int32 partition_id = 2;
+  int32 partition_split_version = 3;
+}
+
+message PrepareSwitchPrimaryRequest {
+  int32 table_id = 1;
+  int32 partition_id = 2;
+}
+
+// ========= get replicate info ===============
+
+message ReplicateInfoRequest {
+}
+
+message ReplicateInfoResponse {
+  int32 replicate_port = 1;
+}
+
+service PartitionService {
+  rpc AddReplica(AddReplicaRequest) returns (ErrorStatus);
+  rpc Reconfigure(ReconfigPartitionRequest) returns (ErrorStatus);
+  rpc RemoveReplica(RemoveReplicaRequest) returns (ErrorStatus);
+  rpc GetReplicas(GetReplicasRequest) returns (GetReplicasResponse);
+  rpc HandleCustomCommand(CustomCommandRequest) returns (CustomCommandResponse);
+  rpc ChangeAuthentication(ChangeAuthenticationRequest) returns (ErrorStatus);
+  rpc ReplicaSplit(ReplicaSplitRequest) returns (ErrorStatus);
+  rpc ReplicaSplitCleanup(ReplicaSplitCleanupRequest) returns (ErrorStatus);
+  rpc PrepareSwitchPrimary(PrepareSwitchPrimaryRequest) returns (ErrorStatus);
+  rpc GetReplicateInfo(ReplicateInfoRequest) returns (ReplicateInfoResponse);
+}

@@ -1,0 +1,15 @@
+syntax = "proto3";
+
+package colossusdb;
+option go_package = "github.com/kuaishou/colossusdb/pb;pb";
+option java_package = "com.kuaishou.reco.colossusdb";
+option java_multiple_files = true;
+
+import "teams/reco-arch/colossusdb/proto/common.proto";
+
+message ReplicaLocation {
+  // server_index refers to one entry in RouteEntries.servers
+  int32 server_index = 1;
+  ReplicaRole role = 2;
+  map<string, string> info = 3;
+}

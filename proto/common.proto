@@ -1,0 +1,44 @@
+syntax = "proto3";
+
+package colossusdb;
+option go_package = "github.com/kuaishou/colossusdb/pb;pb";
+option java_package = "com.kuaishou.reco.colossusdb";
+option java_multiple_files = true;
+
+message ErrorStatus {
+  int32 code = 1;
+  string message = 2;
+}
+
+enum ReplicaRole {
+  kPrimary = 0;
+  kSecondary = 1;
+  kLearner = 2;
+  kInvalid = 10001;
+}
+
+message ReplicaHub {
+  string name = 1;
+  string az = 2;
+  // roles in `disallowed_roles` are disallowed to exist in this hub
+  repeated ReplicaRole disallowed_roles = 3;
+}
+
+enum AdminNodeOp {
+  kNoop = 0;
+  kRestart = 1;
+  kOffline = 2;
+}
+
+// wrap ErrorStatus into another message
+// so as to make every http-json response
+// will have the common format:
+// {
+//    "status": {
+//        "code": code,
+//        "message": "xxxxx"
+//    }
+// }
+message ErrorStatusResponse {
+  ErrorStatus status = 1;
+}

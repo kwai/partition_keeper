@@ -1,0 +1,26 @@
+syntax = "proto3";
+
+package colossusdb;
+option go_package = "github.com/kuaishou/colossusdb/pb;pb";
+
+import "teams/reco-arch/colossusdb/proto/common.proto";
+
+message StopNodeRequest {
+  string service_name = 1;
+  string node_id = 2;
+}
+
+message StartNodeRequest {
+  string service_name = 1;
+  string node_id = 2;
+  int32 port = 3;
+  string paz = 4;
+  string node_index = 5;
+}
+
+service MockOneboxAdmin {
+  // POST
+  rpc StopNode(StopNodeRequest) returns (ErrorStatusResponse);
+  // POST
+  rpc StartNode(StartNodeRequest) returns (ErrorStatusResponse);
+};

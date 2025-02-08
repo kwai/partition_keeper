@@ -1,0 +1,49 @@
+syntax = "proto3";
+
+package colossusdb;
+option go_package = "github.com/kuaishou/colossusdb/pb;pb";
+
+enum ConfigItemValueFormat {
+  STRING = 0;
+  LONG = 1;
+  DOUBLE = 2;
+  BOOL = 3;
+  BINARY = 4;
+  PROTOBUF = 5;
+  ZSTD = 6;
+}
+
+message ConfigItemValue {
+  ConfigItemValueFormat format = 1;
+  string schema = 2;
+  string content = 3;
+}
+
+message ConfigDir {
+  int64 version = 1;
+  string signature = 2;
+  map<string, ConfigItemValue> items = 3;
+  int64 timestamp = 4;
+  string owner = 5;
+  int64 mwi = 6;
+}
+
+enum ModifyDirOpType {
+  PUT = 0;
+  DELETE = 1;
+}
+
+message ModifyDirOp {
+  ModifyDirOpType type = 1;
+  string item_name = 2;
+  ConfigItemValue item = 3;
+}
+
+message ModifyDirRequest {
+  string path = 1;
+  bool has_signature = 2;
+  string signature = 3;
+  repeated ModifyDirOp ops = 4;
+  string owner = 5;
+  int64 mwi = 6;
+}
