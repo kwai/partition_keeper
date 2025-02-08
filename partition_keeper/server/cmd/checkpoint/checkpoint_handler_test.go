@@ -105,7 +105,7 @@ func TestCheckpointClean(t *testing.T) {
 	assert.Equal(t, checkpointCleaner.CleanOneExecution(execInfo), false)
 	assert.Equal(t, checkpointCleaner.CleanAllExecutions(), false)
 
-	info.Args["hdfs_user"] = "reco"
+	info.Args["hdfs_user"] = "kwai"
 	assert.Equal(t, checkpointCleaner.CleanOneExecution(execInfo), true)
 	_, succ = fileSystem.ListDirectory(path, "STAGING", "")
 	assert.Equal(t, succ, false)

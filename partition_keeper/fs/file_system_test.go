@@ -13,12 +13,12 @@ func TestGetFsContext(t *testing.T) {
 		fs_type FsType
 	}
 	paths := map[string]CheckResult{
-		"hdfs://reco@/home/test":  {path: "/home/test", user: "reco", fs_type: FsType_hdfs},
-		"hdfs:/reco@/home/test":   {path: "", user: "", fs_type: FsType_invalid},
-		"hdfs1:/reco@/home/test":  {path: "", user: "", fs_type: FsType_invalid},
+		"hdfs://kwai@/home/test":  {path: "/home/test", user: "kwai", fs_type: FsType_hdfs},
+		"hdfs:/kwai@/home/test":   {path: "", user: "", fs_type: FsType_invalid},
+		"hdfs1:/kwai@/home/test":  {path: "", user: "", fs_type: FsType_invalid},
 		"/home/test":              {path: "/home/test", user: "", fs_type: FsType_hdfs},
 		"local:/home/test":        {path: "local:/home/test", user: "", fs_type: FsType_hdfs},
-		"local://reco@/home/test": {path: "/home/test", user: "reco", fs_type: FsType_local},
+		"local://kwai@/home/test": {path: "/home/test", user: "kwai", fs_type: FsType_local},
 	}
 	for k, v := range paths {
 		fs, path, user := GetFsContextByKconfPath(k)
