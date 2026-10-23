@@ -76,7 +76,7 @@ func NewRoutePublisher(
 func (n *RoutePublisher) NotifyChange() {
 	select {
 	case n.routeChanged <- true:
-		logging.Verbose(1, "%s: change has notified", n.logName)
+		logging.Verbose(1, "%s: change has been notified", n.logName)
 	default:
 		logging.Verbose(1, "%s: has pending event to handle, skip new one", n.logName)
 	}
@@ -126,7 +126,7 @@ func (n *RoutePublisher) tryRoute(tryType string, entries *pb.RouteEntries) *pb.
 
 		if err != nil {
 			logging.Warning(
-				"%s: %s route to remote failed: %s. has try %d times",
+				"%s: %s route to remote failed: %s. has tried %d times",
 				n.logName,
 				tryType,
 				err.Error(),
