@@ -143,7 +143,7 @@ func (z *ZookeeperStore) retryAccessZk(ctx context.Context, f accessZk, expect [
 				}
 			}
 		default:
-			logging.Warning("wait zk %s to recover, has try %d times", state.String(), tryCount)
+			logging.Warning("wait zk %s to recover, has tried %d times", state.String(), tryCount)
 		}
 		tryCount++
 
